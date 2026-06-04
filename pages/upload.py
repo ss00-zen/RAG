@@ -7,11 +7,32 @@ from rag.retriever_dense import NvidiaEmbeddings, build_vector_db
 from rag.pipeline import process_document
 from rag.retriever_sparse import build_bm25
 
+# ==============================
+# ✅ AUTH CHECK (ADMIN ONLY)
+# ==============================
+user = st.session_state.get("user")
+
+if not user:
+    st.error("Please login")
+    st.stop()
+
+roles = user.get("realm_access", {}).get("roles", [])
+is_admin = "admin" in roles
+
+if not is_admin:
+    st.error("🚫 Access denied. Admin only.")
+    st.stop()
+
+# ==============================
+# ✅ INIT
+# ==============================
 load_dotenv()
 
 st.title("📄 Upload & Process Document")
 
-# ✅ FORM START
+# ==============================
+# ✅ FORM
+# ==============================
 with st.form("upload_form"):
 
     uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
@@ -19,17 +40,20 @@ with st.form("upload_form"):
     # ✅ classification toggle
     is_classified = st.checkbox("🔐 Mark as Classified", value=False)
 
-    # ✅ submit button
     submitted = st.form_submit_button(
         "🚀 Process Document",
         use_container_width=True
     )
 
-# ✅ Validation
+# ==============================
+# ✅ VALIDATION
+# ==============================
 if submitted and uploaded_file is None:
     st.warning("⚠️ Please upload a file before submitting")
 
-# ✅ PROCESS ONLY AFTER SUBMIT
+# ==============================
+# ✅ PROCESS
+# ==============================
 if submitted and uploaded_file is not None:
 
     with open("temp.pdf", "wb") as f:

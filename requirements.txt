@@ -1,0 +1,35 @@
+# --- Web API ---
+fastapi==0.111.0
+uvicorn==0.30.1
+
+# --- Auth (Keycloak / JWT) ---
+python-jose[cryptography]==3.3.0
+requests==2.32.3
+
+# --- RAG Core ---
+langchain==0.2.5
+langchain-core==0.2.9
+langchain-community==0.2.5
+
+# --- Embeddings / LLM ---
+openai==1.35.14
+tiktoken==0.7.0
+
+# --- Vector DB ---
+faiss-cpu==1.8.0
+
+# (optional if using chroma instead)
+# chromadb==0.5.3
+
+# --- Data handling ---
+pandas==2.2.2
+numpy==1.26.4
+
+# --- File handling ---
+python-multipart==0.0.9
+
+# --- Env config ---
+python-dotenv==1.0.1
+
+# --- Logging / utils ---
+tqdm==4.66.4
