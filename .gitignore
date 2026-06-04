@@ -1,0 +1,41 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.env/
+env/
+.venv/
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.pyre/
+.pytype/
+
+# Local environment files
+.env
+venv/
+
+# Database and index files
+chat.db
+chunks.pkl
+bm25.pkl
+vectorstore/
+vectorstore/*.faiss
+
+# Logs and evaluation output
+*.log
+eval_logs.jsonl
+
+# Temporary files
+temp.pdf
+
+# Editor and system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
