@@ -1,13 +1,9 @@
 import os
+import requests
 from openai import OpenAI
 from langchain_community.vectorstores import FAISS
 from langchain_core.embeddings import Embeddings
-
-
-import os
-import requests
-from langchain_community.vectorstores import FAISS
-from langchain_core.embeddings import Embeddings
+from rag.logger import logger
 
 
 class NvidiaEmbeddings(Embeddings):
@@ -27,12 +23,15 @@ class NvidiaEmbeddings(Embeddings):
             "input_type": "passage"   # ✅ IMPORTANT (correct for docs)
         }
 
+        logger.debug("Requesting document embeddings for %s texts", len(texts))
         response = requests.post(url, headers=headers, json=data)
 
         if response.status_code != 200:
+            logger.error("Embedding error: %s", response.text)
             raise Exception(f"Embedding error: {response.text}")
 
         result = response.json()
+        logger.debug("Received document embeddings response")
 
         return [item["embedding"] for item in result["data"]]
 
@@ -52,17 +51,21 @@ class NvidiaEmbeddings(Embeddings):
             "input_type": "query"   # ✅ IMPORTANT
         }
 
+        logger.debug("Requesting query embedding")
         response = requests.post(url, headers=headers, json=data)
 
         if response.status_code != 200:
+            logger.error("Query embedding error: %s", response.text)
             raise Exception(f"Query embedding error: {response.text}")
 
         result = response.json()
+        logger.debug("Received query embedding response")
 
         return result["data"][0]["embedding"]
 
 
 def build_vector_db(chunks, progress_callback=None):
+    logger.info("Building vector DB for %s chunks", len(chunks))
     embedding = NvidiaEmbeddings()
 
     # ✅ FIX: embed documents correctly
@@ -75,15 +78,14 @@ def build_vector_db(chunks, progress_callback=None):
         metadatas=metadatas
     )
 
+    logger.info("Vector DB build complete")
     return db
 
 
 
 def dense_search(db, query, k=20):
+    logger.info("Performing dense search for query=%r k=%s", query, k)
     retriever = db.as_retriever(search_kwargs={"k": k})
-    return retriever.invoke(query)
-
-
-def build_vector_db(chunks):
-    embedding = NvidiaEmbeddings()
-    return FAISS.from_documents(chunks, embedding)
+    results = retriever.invoke(query)
+    logger.info("Dense search returned %s hits", len(results))
+    return results

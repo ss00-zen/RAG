@@ -34,6 +34,7 @@ def hierarchical_chunking(docs, progress_callback=None):
         children = children[:2]
 
         for child in children:
+            child.metadata = dict(parent.metadata)
             child.metadata["parent"] = parent.page_content[:200]
             final_chunks.append(child)
 

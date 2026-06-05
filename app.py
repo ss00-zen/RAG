@@ -2,6 +2,8 @@ import streamlit as st
 import requests
 from jose import jwt
 
+from rag.logger import logger
+
 st.set_page_config(page_title="Enterprise RAG Demo")
 
 # ✅ FIXED URL
@@ -97,6 +99,8 @@ if st.sidebar.button("Login"):
     }
 
     res = token_request(payload)
+    logger.info("Login attempt for user %s, status=%s", username, res.status_code)
+    logger.debug("Login response: %s", res.text)
 
     st.write("TOKEN_URL:", TOKEN_URL)
     st.write("LOGIN_STATUS:", res.status_code)
@@ -113,8 +117,10 @@ if st.sidebar.button("Login"):
             st.session_state.refresh_token = refresh
             st.session_state.user = user
             st.sidebar.success(f"✅ {user.get('preferred_username')}")
+            logger.info("Login successful for user %s", user.get('preferred_username'))
             st.rerun()
         except Exception as e:
+            logger.exception("Token verification failed for user %s", username)
             st.sidebar.error(f"❌ Token verification failed: {str(e)}")
     else:
         st.sidebar.error(f"❌ Login failed")
@@ -137,12 +143,15 @@ if st.session_state.access_token:
     except Exception:
         # token expired → refresh
         if st.session_state.refresh_token:
+            logger.info("Refreshing access token for user %s", st.session_state.user.get('preferred_username') if st.session_state.user else 'unknown')
             new_access, new_refresh = refresh_access_token(st.session_state.refresh_token)
 
             if new_access:
                 st.session_state.access_token = new_access
                 st.session_state.refresh_token = new_refresh
+                logger.info("Access token refreshed successfully")
             else:
+                logger.warning("Access token refresh failed; logging out")
                 # refresh also failed → logout
                 logout()
                 st.rerun()

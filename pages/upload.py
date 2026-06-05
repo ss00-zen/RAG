@@ -3,6 +3,7 @@ import os
 import pickle
 from dotenv import load_dotenv
 from langchain_community.vectorstores import FAISS
+from rag.logger import logger
 from rag.retriever_dense import NvidiaEmbeddings, build_vector_db
 from rag.pipeline import process_document
 from rag.retriever_sparse import build_bm25
@@ -58,38 +59,59 @@ if submitted and uploaded_file is not None:
 
     with open("temp.pdf", "wb") as f:
         f.write(uploaded_file.read())
+    logger.info("Uploaded file %s saved to temp.pdf", uploaded_file.name)
 
     with st.status("Processing document...", expanded=True) as status:
+        try:
+            # STEP 1: Chunking
+            status.write("📄 Chunking document...")
+            logger.info("Starting document processing for %s", uploaded_file.name)
+            new_chunks = process_document("temp.pdf", source_name=uploaded_file.name)
+            logger.info("Document processed into %s chunks", len(new_chunks))
 
-        # STEP 1: Chunking
-        status.write("📄 Chunking document...")
-        chunks = process_document("temp.pdf")
+            # ✅ attach classification metadata
+            for chunk in new_chunks:
+                chunk.metadata["classified"] = is_classified
 
-        # ✅ attach classification metadata
-        for chunk in chunks:
-            chunk.metadata["classified"] = is_classified
+            status.write(f"✅ {len(new_chunks)} chunks created")
 
-        status.write(f"✅ {len(chunks)} chunks created")
+            # ✅ Load existing chunks and merge
+            import os
+            all_chunks = []
+            if os.path.exists("chunks.pkl"):
+                with open("chunks.pkl", "rb") as f:
+                    all_chunks = pickle.load(f)
+                logger.info("Loaded %s existing chunks from chunks.pkl", len(all_chunks))
+            
+            all_chunks.extend(new_chunks)
+            logger.info("Merged: now have %s total chunks", len(all_chunks))
 
-        # STEP 2: Embeddings
-        status.write("🧠 Generating embeddings...")
-        db = build_vector_db(chunks)
+            # STEP 2: Embeddings
+            status.write("🧠 Generating embeddings...")
+            logger.info("Building vector database for %s chunks", len(all_chunks))
+            db = build_vector_db(all_chunks)
+            logger.info("Vector database built")
 
-        # STEP 3: BM25
-        status.write("⚡ Building search index...")
-        bm25 = build_bm25(chunks)
+            # STEP 3: BM25
+            status.write("⚡ Building search index...")
+            logger.info("Building BM25 index for %s chunks", len(all_chunks))
+            bm25 = build_bm25(all_chunks)
+            logger.info("BM25 index built")
 
-        # STEP 4: Save
-        status.write("💾 Saving...")
+            # STEP 4: Save
+            status.write("💾 Saving...")
+            logger.info("Saving %s merged chunks and index to disk", len(all_chunks))
 
-        db.save_local("vectorstore/")
+            db.save_local("vectorstore/")
 
-        with open("chunks.pkl", "wb") as f:
-            pickle.dump(chunks, f)
+            with open("chunks.pkl", "wb") as f:
+                pickle.dump(all_chunks, f)
 
-        with open("bm25.pkl", "wb") as f:
-            pickle.dump(bm25, f)
+            with open("bm25.pkl", "wb") as f:
+                pickle.dump(bm25, f)
 
-        status.update(label="✅ Done", state="complete")
-
-    st.success("✅ Document processed! Go to Chat page.")
+            status.update(label="✅ Done", state="complete")
+            st.success("✅ Document processed! Go to Chat page.")
+        except Exception as e:
+            logger.exception("Document processing failed for %s", uploaded_file.name)
+            st.error(f"🚫 Processing failed: {e}")

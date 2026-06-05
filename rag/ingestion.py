@@ -3,14 +3,27 @@ from langchain_core.documents import Document
 
 from atlassian import Confluence
 from slack_sdk import WebClient
+from rag.logger import logger
 
 import os
 
-def load_pdf(file_path):
-    return PyPDFLoader(file_path).load()
+def load_pdf(file_path, source_name=None):
+    filename = source_name or os.path.basename(file_path)
+    logger.info("Loading PDF %s with source_name=%s", file_path, filename)
+    docs = PyPDFLoader(file_path).load()
+    for doc in docs:
+        doc.metadata["filename"] = filename
+    logger.info("Loaded %s PDF page documents", len(docs))
+    return docs
 
-def load_markdown(file_path):
-    return UnstructuredMarkdownLoader(file_path).load()
+def load_markdown(file_path, source_name=None):
+    filename = source_name or os.path.basename(file_path)
+    logger.info("Loading markdown %s with source_name=%s", file_path, filename)
+    docs = UnstructuredMarkdownLoader(file_path).load()
+    for doc in docs:
+        doc.metadata["filename"] = filename
+    logger.info("Loaded %s markdown documents", len(docs))
+    return docs
 
 # ✅ Confluence (real API)
 def load_confluence():
