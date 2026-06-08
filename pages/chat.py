@@ -27,7 +27,7 @@ user_id = user.get("sub")
 # ✅ ==============================
 # INIT
 # ==============================
-load_dotenv()
+load_dotenv(override=True)  # Force .env to override environment variables
 init_db()
 logger.info("Chat page initialized for user_id=%s", user_id)
 

@@ -1,29 +1,32 @@
 import os
 import re
 import json
-import requests
 from rag.logger import logger
+from rag.llm import call_litellm
 
 
-def _call_nvidia(prompt):
-    api_key = os.getenv("NVIDIA_API_KEY")
-    url = "https://integrate.api.nvidia.com/v1/chat/completions"
+def _call_litellm(prompt):
+    selected_model = os.getenv("LITELLM_MODEL")
+    if not selected_model:
+        raise EnvironmentError("LITELLM_MODEL must be set for query rewrite/expansion.")
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Rewrite or expand search queries for document retrieval. Preserve the meaning and keep the outputs concise. "
+                "Return valid JSON only."
+            ),
+        },
+        {"role": "user", "content": prompt},
+    ]
 
-    data = {
-        "model": "meta/llama-3.1-8b-instruct",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.2,
-        "max_tokens": 512
-    }
-
-    response = requests.post(url, headers=headers, json=data, timeout=30)
-    response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"]
+    return call_litellm(
+        messages,
+        model=selected_model,
+        temperature=0.2,
+        max_tokens=512,
+    )
 
 
 def _clean_line(line):
@@ -58,7 +61,7 @@ Return JSON only:
 Query: {query}
 """
     try:
-        response = _call_nvidia(prompt)
+        response = _call_litellm(prompt)
         data = json.loads(response)
         rewritten = _clean_line(data.get("query", ""))
         if _basic_valid(rewritten) and rewritten.lower() != query.lower():
@@ -85,7 +88,7 @@ Return JSON only:
 Original query: {query}
 """
     try:
-        response = _call_nvidia(prompt)
+        response = _call_litellm(prompt)
         data = json.loads(response)
         queries = data.get("queries", [])
         sanitized = []

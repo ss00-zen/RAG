@@ -27,7 +27,7 @@ if not is_admin:
 # ==============================
 # ✅ INIT
 # ==============================
-load_dotenv()
+load_dotenv(override=True)
 
 st.title("📄 Upload & Process Document")
 

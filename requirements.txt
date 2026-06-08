@@ -12,7 +12,7 @@ langchain-core==0.2.9
 langchain-community==0.2.5
 
 # --- Embeddings / LLM ---
-openai==1.35.14
+litellm==1.88.0
 tiktoken==0.7.0
 
 # --- Vector DB ---

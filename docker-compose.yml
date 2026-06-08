@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  # LiteLLM Proxy Server
+  litellm-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.litellm
+    container_name: litellm-proxy
+    ports:
+      - "4000:4000"
+    environment:
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY}
+    volumes:
+      - ./litellm_config.yaml:/app/litellm_config.yaml
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - rag-network
+
+  # Optional: RAG Application (if you want to containerize it too)
+  # rag-app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.app
+  #   container_name: rag-app
+  #   ports:
+  #     - "8501:8501"
+  #   depends_on:
+  #     litellm-proxy:
+  #       condition: service_healthy
+  #   environment:
+  #     - NVIDIA_API_KEY=${NVIDIA_API_KEY}
+  #     - LITELLM_PROXY_URL=http://litellm-proxy:4000
+  #   volumes:
+  #     - ./:/app
+  #   networks:
+  #     - rag-network
+
+networks:
+  rag-network:
+    driver: bridge

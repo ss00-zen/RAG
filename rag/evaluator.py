@@ -1,44 +1,29 @@
 import os
-import requests
+from rag.logger import logger
+from rag.llm import call_litellm
 
 
-def call_nvidia_llm(prompt):
+def _call_litellm(prompt):
+    prompt = prompt[:2000]
 
-    # ✅ FIX: truncate prompt to avoid NVIDIA API failure
-    prompt = prompt[:2000]   # 🔥 IMPORTANT LINE
+    messages = [
+        {
+            "role": "system",
+            "content": "Be precise and follow instructions exactly."
+        },
+        {"role": "user", "content": prompt}
+    ]
 
-    url = "https://integrate.api.nvidia.com/v1/chat/completions"
+    return call_litellm(
+        messages,
+        model=os.getenv("LITELLM_MODEL", "nvidia-llm"),
+        temperature=0,
+        max_tokens=300,
+    )
 
-    headers = {
-        "Authorization": f"Bearer {os.getenv('NVIDIA_API_KEY')}",
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "model": "meta/llama-3.1-8b-instruct",
-        "messages": [
-            {
-                "role": "system",
-                "content": "Be precise and follow instructions exactly."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        "temperature": 0,
-        "max_tokens": 300
-    }
-
-    response = requests.post(url, headers=headers, json=data)
-
-    if response.status_code != 200:
-        raise Exception(f"NVIDIA LLM Error: {response.text}")
-
-    return response.json()["choices"][0]["message"]["content"]
 
 # ✅ Proper RAGAS wrapper
-class SimpleNvidiaLLM:
+class SimpleLiteLLM:
 
     def set_run_config(self, run_config):
         pass
@@ -49,11 +34,11 @@ class SimpleNvidiaLLM:
 
         for prompt in prompts:
 
-            print("\n--- RAGAS PROMPT ---\n", prompt)   # ✅ ADD THIS
+            print("\n--- RAGAS PROMPT ---\n", prompt)
 
-            output = call_nvidia_llm(prompt)
+            output = _call_litellm(prompt)
 
-            print("\n--- LLM OUTPUT ---\n", output)    # ✅ ADD THIS
+            print("\n--- LLM OUTPUT ---\n", output)
 
             results.append({
                 "generations": [[{"text": output}]]
@@ -72,8 +57,8 @@ def run_evaluation(dataset):
         context_utilization,
     )
 
-    # ✅ Use your working NVIDIA LLM call
-    llm = SimpleNvidiaLLM()
+    # ✅ Use the LiteLLM gateway for evaluation prompts
+    llm = SimpleLiteLLM()
 
     # ✅ Minimal dummy embedding (required by RAGAS internally)
     class DummyEmbedding:

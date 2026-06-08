@@ -21,10 +21,15 @@ venv/
 
 # Database and index files
 chat.db
+chat.db.bak*
 chunks.pkl
+chunks.pkl.bak*
 bm25.pkl
 vectorstore/
 vectorstore/*.faiss
+vectorstore_backup/
+vectorstore_cleared_backup*/
+scripts/
 
 # Logs and evaluation output
 *.log

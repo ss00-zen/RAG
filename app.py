@@ -1,8 +1,12 @@
 import streamlit as st
 import requests
 from jose import jwt
+from dotenv import load_dotenv
 
 from rag.logger import logger
+
+# Load .env file, overriding any existing environment variables
+load_dotenv(override=True)
 
 st.set_page_config(page_title="Enterprise RAG Demo")
 

@@ -1,0 +1,27 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install LiteLLM and dependencies
+RUN pip install --no-cache-dir \
+    litellm==1.88.0 \
+    python-dotenv \
+    uvicorn \
+    pydantic
+
+# Copy config
+COPY litellm_config.yaml /app/litellm_config.yaml
+COPY .env /app/.env
+
+# Expose port
+EXPOSE 4000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:4000/health')"
+
+# Start LiteLLM proxy
+CMD ["python", "-m", "litellm.proxy.proxy_server", \
+     "--config", "/app/litellm_config.yaml", \
+     "--port", "4000", \
+     "--debug"]

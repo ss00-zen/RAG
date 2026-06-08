@@ -1,0 +1,24 @@
+model_list:
+  - model_name: nvidia-llm
+    litellm_params:
+      model: openai/meta/llama-3.1-70b-instruct
+      api_key: os.environ/NVIDIA_API_KEY
+      api_base: https://integrate.api.nvidia.com/v1
+
+  - model_name: nvidia-embeddings
+    litellm_params:
+      model: openai/nvidia/nv-embedqa-e5-v5
+      api_key: os.environ/NVIDIA_API_KEY
+      api_base: https://integrate.api.nvidia.com/v1
+
+router_settings:
+  enable_pre_call_checks: true
+  timeout: 600
+  num_retries: 1
+
+litellm_settings:
+  set_verbose: true
+  telemetry: false
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
