@@ -1,15 +1,41 @@
 model_list:
-  # Primary
-  - model_name: nvidia-llm
+
+  # ✅ FAST (cheap / short queries)
+  - model_name: nvidia-fast
+
+    litellm_params:
+      model: zyphra/zamba2-7b-instruct
+      api_key: ${NVIDIA_API_KEY}
+      api_base: https://integrate.api.nvidia.com/v1
+      rpm: 60
+      metadata:
+        tier: fast
+
+
+  # ✅ BALANCED (default model)
+  - model_name: nvidia-balanced
     litellm_params:
       model: openai/meta/llama-3.1-70b-instruct
       api_key: os.environ/NVIDIA_API_KEY
       api_base: https://integrate.api.nvidia.com/v1
       rpm: 30
       metadata:
-        deployment_name: primary
+        tier: balanced
 
-  - model_name: nvidia-llm
+
+  # ✅ STRONG (complex reasoning)
+  - model_name: nvidia-strong
+    litellm_params:
+      model: openai/abacusai/dracarys-llama-3.1-70b-instruct
+      api_key: os.environ/NVIDIA_API_KEY
+      api_base: https://integrate.api.nvidia.com/v1
+      rpm: 20
+      metadata:
+        tier: strong
+
+
+  # ✅ FAILOVER GROUP (same alias, different deployments)
+  - model_name: nvidia-balanced
     litellm_params:
       model: openai/abacusai/dracarys-llama-3.1-70b-instruct
       api_key: os.environ/NVIDIA_API_KEY
@@ -17,15 +43,10 @@ model_list:
       metadata:
         deployment_name: fallback
 
-  - model_name: nvidia-llm
-    litellm_params:
-      model: openai/01-ai/yi-large
-      api_key: os.environ/NVIDIA_API_KEY
-      api_base: https://integrate.api.nvidia.com/v1
-      metadata:
-        deployment_name: fallback
 
-
+# ==============================
+# ✅ ROUTER SETTINGS
+# ==============================
 router_settings:
   routing_strategy: least-busy
   num_retries: 2
@@ -34,10 +55,18 @@ router_settings:
   timeout: 600
   enable_pre_call_checks: true
 
+
+# ==============================
+# ✅ LITELLM SETTINGS
+# ==============================
 litellm_settings:
   set_verbose: true
   telemetry: false
   drop_params: true
-  
+
+
+# ==============================
+# ✅ GENERAL SETTINGS
+# ==============================
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

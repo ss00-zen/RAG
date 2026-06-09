@@ -10,24 +10,27 @@ from rag.logger import logger
 # ==============================
 def call_litellm(
     messages: List[Dict[str, str]],
+    model: str = None,
     temperature: float = 0.2,
     max_tokens: int = 1024
 ) -> str:
-
     proxy_url = os.getenv("LITELLM_PROXY_URL", "http://localhost:4000").rstrip("/")
     api_url = f"{proxy_url}/v1/chat/completions"
 
     payload = {
-        "model": os.getenv("LITELLM_MODEL", "nvidia-llm"),
+        "model": model or os.getenv("LITELLM_MODEL", "nvidia-llm"),
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
 
-    logger.info("Calling LiteLLM proxy: %s", api_url)
+    logger.info(
+        "Calling LiteLLM proxy: %s | model=%s",
+        api_url,
+        payload["model"]
+    )
 
     try:
-        
         headers = {
             "Authorization": f"Bearer {os.getenv('LITELLM_MASTER_KEY')}",
             "Content-Type": "application/json"
@@ -36,10 +39,9 @@ def call_litellm(
         response = requests.post(
             api_url,
             json=payload,
-            headers=headers,   # ✅ IMPORTANT
+            headers=headers,
             timeout=60
-)
-
+        )
 
         if response.status_code != 200:
             logger.error("LiteLLM error %s: %s", response.status_code, response.text)
@@ -76,9 +78,15 @@ def _filter_docs_by_role(docs: List[Any], role: str) -> List[Any]:
 # ==============================
 # ✅ RAG answer generation
 # ==============================
-def generate_answer(query: str, docs: List[Any], role: str) -> str:
+def generate_answer(
+    query: str,
+    docs: List[Any],
+    role: str,
+    model: str = None
+) -> str:
     """
-    Generate answer using RAG + LiteLLM
+    Generate answer using RAG + LiteLLM.
+    The orchestrator can pass a LiteLLM model alias via `model`.
     """
 
     docs = _filter_docs_by_role(docs, role)
@@ -87,9 +95,12 @@ def generate_answer(query: str, docs: List[Any], role: str) -> str:
         logger.info("No accessible docs found → returning I don't know")
         return "I don't know"
 
-    logger.info("Generating answer using %s docs", len(docs))
+    logger.info(
+        "Generating answer using %s docs with model=%s",
+        len(docs),
+        model or os.getenv("LITELLM_MODEL", "nvidia-llm")
+    )
 
-    # ✅ build context
     context = "\n\n".join(
         [
             f"Source: {doc.metadata.get('filename', doc.metadata.get('source', 'unknown'))}\n{doc.page_content}"
@@ -113,10 +124,15 @@ Question:
             "content": (
                 "You are a retrieval-augmented assistant. "
                 "Answer ONLY using the provided context. "
-                "If missing, return exactly: I don't know."
+                "If the answer cannot be found in the context, return exactly: I don't know."
             ),
         },
         {"role": "user", "content": prompt},
     ]
 
-    return call_litellm(messages, temperature=0.2, max_tokens=1024)
+    return call_litellm(
+        messages,
+        model=model,
+        temperature=0.2,
+        max_tokens=1024
+    )
