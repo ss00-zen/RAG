@@ -5,11 +5,14 @@ from dotenv import load_dotenv
 
 from rag.logger import logger
 
-# Load .env file, overriding any existing environment variables
 load_dotenv(override=True)
 
 st.set_page_config(page_title="Enterprise RAG Demo")
 
+
+# ==============================
+# ✅ AUTH CONFIG
+# ==============================
 KEYCLOAK_URL = "http://localhost:8080"
 REALM = "rag_application"
 CLIENT_ID = "backend-api"
@@ -21,17 +24,18 @@ JWKS_URL = f"{KEYCLOAK_ISSUER}/protocol/openid-connect/certs"
 LOGOUT_URL = f"{KEYCLOAK_ISSUER}/protocol/openid-connect/logout"
 
 
+# ==============================
+# ✅ TOKEN HELPERS
+# ==============================
 @st.cache_resource
 def load_jwks():
-    response = requests.get(JWKS_URL, timeout=10)
-    response.raise_for_status()
-    return response.json()
+    return requests.get(JWKS_URL, timeout=10).json()
 
 
 jwks = load_jwks()
 
 
-def verify_token(token: str):
+def verify_token(token):
     header = jwt.get_unverified_header(token)
     key = next(k for k in jwks["keys"] if k["kid"] == header["kid"])
     return jwt.decode(
@@ -43,163 +47,82 @@ def verify_token(token: str):
     )
 
 
-def token_request(payload: dict):
-    form_data = {
-        "client_id": CLIENT_ID,
-        "client_secret": CLIENT_SECRET,
-        **payload,
-    }
-
+def token_request(payload):
     return requests.post(
         TOKEN_URL,
-        data=form_data,
+        data={
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            **payload,
+        },
         timeout=15,
     )
 
 
-def refresh_access_token(refresh_token: str):
-    payload = {
+def refresh_access_token(refresh_token):
+    res = token_request({
         "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-    }
-
-    res = token_request(payload)
+        "refresh_token": refresh_token
+    })
     if res.status_code == 200:
         data = res.json()
         return data["access_token"], data.get("refresh_token")
-
     return None, None
 
 
 def logout():
-    if st.session_state.get("refresh_token"):
-        try:
-            requests.post(
-                LOGOUT_URL,
-                data={
-                    "client_id": CLIENT_ID,
-                    "client_secret": CLIENT_SECRET,
-                    "refresh_token": st.session_state.refresh_token,
-                },
-                timeout=10,
-            )
-        except Exception:
-            pass
-
-    st.session_state.user = None
-    st.session_state.access_token = None
-    st.session_state.refresh_token = None
+    st.session_state.clear()
 
 
-# Session state init
-if "user" not in st.session_state:
-    st.session_state.user = None
-
-if "access_token" not in st.session_state:
-    st.session_state.access_token = None
-
-if "refresh_token" not in st.session_state:
-    st.session_state.refresh_token = None
+# ==============================
+# ✅ SESSION
+# ==============================
+for key in ["user", "access_token", "refresh_token"]:
+    if key not in st.session_state:
+        st.session_state[key] = None
 
 
-# Auto-validate / refresh token
-if st.session_state.access_token:
-    try:
-        st.session_state.user = verify_token(st.session_state.access_token)
-    except Exception:
-        if st.session_state.refresh_token:
-            new_access, new_refresh = refresh_access_token(st.session_state.refresh_token)
-
-            if new_access:
-                st.session_state.access_token = new_access
-                st.session_state.refresh_token = new_refresh
-                try:
-                    st.session_state.user = verify_token(new_access)
-                except Exception:
-                    logout()
-                    st.rerun()
-            else:
-                logout()
-                st.rerun()
-        else:
-            logout()
-            st.rerun()
-
-
-# Sidebar login
+# ==============================
+# ✅ LOGIN UI
+# ==============================
 st.sidebar.title("🔐 Login")
+
 username = st.sidebar.text_input("Username")
 password = st.sidebar.text_input("Password", type="password")
 
 if st.sidebar.button("Login"):
-    payload = {
+    res = token_request({
         "grant_type": "password",
         "username": username.strip(),
         "password": password.strip(),
-    }
-
-    res = token_request(payload)
-    logger.info("Login attempt for user %s, status=%s", username, res.status_code)
-    logger.debug("Login response: %s", res.text)
-
-    st.write("STATUS:", res.status_code)
-    st.write("RESPONSE:", res.text)
+    })
 
     if res.status_code == 200:
         tokens = res.json()
-        access_token = tokens["access_token"]
-        refresh_token = tokens.get("refresh_token")
+        user = verify_token(tokens["access_token"])
 
-        try:
-            user = verify_token(access_token)
-            st.session_state.access_token = access_token
-            st.session_state.refresh_token = refresh_token
-            st.session_state.user = user
-            st.sidebar.success(f"✅ {user.get('preferred_username')}")
-            logger.info("Login successful for user %s", user.get('preferred_username'))
-            st.rerun()
-        except Exception as e:
-            logger.exception("Token verification failed for user %s", username)
-            st.sidebar.error(f"❌ Token verification failed: {str(e)}")
+        st.session_state.user = user
+        st.session_state.access_token = tokens["access_token"]
+        st.session_state.refresh_token = tokens.get("refresh_token")
+
+        st.sidebar.success(f"✅ {user.get('preferred_username')}")
+        st.rerun()
     else:
         st.sidebar.error("❌ Login failed")
 
 
-# Sidebar logout
+# ==============================
+# ✅ LOGOUT
+# ==============================
 if st.session_state.user:
     if st.sidebar.button("🚪 Logout"):
         logout()
         st.rerun()
 
 
-
-# auto-refresh
-# ✅ Always validate token on every run
-if st.session_state.access_token:
-    try:
-        # try validating current token
-        verify_token(st.session_state.access_token)
-    except Exception:
-        # token expired → refresh
-        if st.session_state.refresh_token:
-            logger.info("Refreshing access token for user %s", st.session_state.user.get('preferred_username') if st.session_state.user else 'unknown')
-            new_access, new_refresh = refresh_access_token(st.session_state.refresh_token)
-
-            if new_access:
-                st.session_state.access_token = new_access
-                st.session_state.refresh_token = new_refresh
-                logger.info("Access token refreshed successfully")
-            else:
-                logger.warning("Access token refresh failed; logging out")
-                # refresh also failed → logout
-                logout()
-                st.rerun()
-
-
-# UI
-#=======
-# Main UI
-
+# ==============================
+# ✅ MAIN LANDING PAGE
+# ==============================
 if not st.session_state.user:
     st.title("📚 Enterprise RAG Demo")
     st.warning("Please login")
@@ -210,22 +133,43 @@ roles = user.get("realm_access", {}).get("roles", [])
 is_admin = "admin" in roles
 
 st.title("📚 Enterprise RAG Demo")
-st.success(f"Logged in as: {user.get('preferred_username')}")
 
+st.success(f"Logged in as: {user.get('preferred_username')}")
+st.info(f"Role: {'Admin' if is_admin else 'User'}")
+
+
+# ==============================
+# ✅ INSTRUCTIONS ONLY
+# ==============================
 if is_admin:
     st.markdown(
         """
-### 👈 Use the sidebar to navigate:
+## 👈 Use the sidebar to navigate:
 
-- **Upload** → Upload & process documents
-- **Chat** → Ask questions
+### Admin capabilities:
+- 📤 **Upload Page**
+  - Upload documents (PDF/Markdown)
+  - Mark documents as classified
+
+- 💬 **Chat Page**
+  - Ask questions from your knowledge base
+  - Access classified + public data
+
+---
 """
     )
 else:
     st.markdown(
         """
-### 👈 Use the sidebar to navigate:
+## 👈 Use the sidebar to navigate:
 
-- **Chat** → Ask questions
+### User capabilities:
+- 💬 **Chat Page**
+  - Ask questions from the knowledge base
+  - Only non-classified data available
+
+---
 """
     )
+
+st.warning("⚠️ Please use the sidebar to switch between pages.")

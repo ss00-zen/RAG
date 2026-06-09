@@ -4,21 +4,22 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 def hierarchical_chunking(docs, progress_callback=None):
     """
     Hierarchical chunking with controlled size and limits.
+
     Ensures:
     ✅ No chunk explosion
-    ✅ Safe token size for NVIDIA embeddings
-    ✅ Good semantic context
+    ✅ Safe token size for embeddings
+    ✅ Metadata consistency (classified always present)
     """
 
-    # ✅ Parent chunks (larger context)
+    # ✅ Parent chunks
     parent_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,   # ~200–250 tokens
+        chunk_size=1000,
         chunk_overlap=150
     )
 
-    # ✅ Child chunks (embedding-safe)
+    # ✅ Child chunks
     child_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=400,    # ✅ critical (fits <512 token limit)
+        chunk_size=400,
         chunk_overlap=80
     )
 
@@ -30,12 +31,24 @@ def hierarchical_chunking(docs, progress_callback=None):
     for idx, parent in enumerate(parent_chunks):
         children = child_splitter.split_documents([parent])
 
-        # ✅ HARD LIMIT → avoid explosion
+        # ✅ prevent explosion
         children = children[:2]
 
         for child in children:
-            child.metadata = dict(parent.metadata)
+
+            # ✅ copy metadata safely
+            parent_metadata = dict(parent.metadata) if parent.metadata else {}
+
+            # ✅ enforce default classification rule
+            # missing → False (non-classified)
+            parent_metadata["classified"] = parent_metadata.get("classified", False)
+
+            # ✅ assign metadata
+            child.metadata = parent_metadata
+
+            # ✅ add parent context
             child.metadata["parent"] = parent.page_content[:200]
+
             final_chunks.append(child)
 
         if progress_callback and total:
