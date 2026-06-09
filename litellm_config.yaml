@@ -1,24 +1,43 @@
 model_list:
+  # Primary
   - model_name: nvidia-llm
     litellm_params:
       model: openai/meta/llama-3.1-70b-instruct
       api_key: os.environ/NVIDIA_API_KEY
       api_base: https://integrate.api.nvidia.com/v1
+      rpm: 30
+      metadata:
+        deployment_name: primary
 
-  - model_name: nvidia-embeddings
+  - model_name: nvidia-llm
     litellm_params:
-      model: openai/nvidia/nv-embedqa-e5-v5
+      model: openai/abacusai/dracarys-llama-3.1-70b-instruct
       api_key: os.environ/NVIDIA_API_KEY
       api_base: https://integrate.api.nvidia.com/v1
+      metadata:
+        deployment_name: fallback
+
+  - model_name: nvidia-llm
+    litellm_params:
+      model: openai/01-ai/yi-large
+      api_key: os.environ/NVIDIA_API_KEY
+      api_base: https://integrate.api.nvidia.com/v1
+      metadata:
+        deployment_name: fallback
+
 
 router_settings:
-  enable_pre_call_checks: true
+  routing_strategy: least-busy
+  num_retries: 2
+  allowed_fails: 2
+  cooldown_time: 30
   timeout: 600
-  num_retries: 1
+  enable_pre_call_checks: true
 
 litellm_settings:
   set_verbose: true
   telemetry: false
-
+  drop_params: true
+  
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
