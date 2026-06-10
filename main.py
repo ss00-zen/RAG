@@ -1,16 +1,15 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
+from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel, Field
+
+from auth.auth import verify_token, get_auth_provider
+from auth.auth_context import normalize_user, role_from_auth
 from rag.orchestrator import orchestrate, set_runtime_objects
 
-# IMPORTANT:
-# replace these with your real load/init functions
-# Example:
-# from rag.bootstrap import load_runtime
-# db, bm25, chunks = load_runtime()
 
 app = FastAPI()
+
 
 # ---------------------------------------------------
 # TODO: replace with actual runtime initialization
@@ -24,17 +23,40 @@ set_runtime_objects(db, bm25, chunks)
 
 class ChatRequest(BaseModel):
     query: str
-    role: str
-    username: Optional[str] = None
-    messages: List[Dict] = []
+    messages: List[Dict] = Field(default_factory=list)
+
+
+def _extract_bearer_token(authorization: Optional[str]) -> str:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+
+    parts = authorization.split(" ", 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Invalid Authorization header")
+
+    token = parts[1].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Empty bearer token")
+
+    return token
 
 
 @app.post("/chat")
-def chat(request: ChatRequest):
+def chat(request: ChatRequest, authorization: Optional[str] = Header(default=None)):
+    token = _extract_bearer_token(authorization)
+
+    try:
+        claims = verify_token(token)
+        auth_ctx = normalize_user(claims, provider=get_auth_provider())
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token verification failed: {str(e)}")
+
+    role = role_from_auth(auth_ctx)
+
     result = orchestrate(
         query=request.query,
-        role=request.role,
-        user_id=request.username,
+        auth_ctx=auth_ctx,                  # keeps current orchestrator signature unchanged
+        user_id=auth_ctx.user_id,
         messages=request.messages,
     )
 
@@ -43,4 +65,7 @@ def chat(request: ChatRequest):
         "classification": result.get("classification"),
         "allowed": result.get("allowed"),
         "debug_info": result.get("debug_info", []),
+        "user_id": auth_ctx.user_id,
+        "role": role,
+        "provider": auth_ctx.provider,
     }

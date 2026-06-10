@@ -7,22 +7,29 @@ from rag.logger import logger
 from rag.retriever_dense import NvidiaEmbeddings, build_vector_db
 from rag.pipeline import process_document
 from rag.retriever_sparse import build_bm25
+from auth.auth_context import normalize_user, can_upload
 
 # ==============================
 # ✅ AUTH CHECK (ADMIN ONLY)
 # ==============================
 user = st.session_state.get("user")
 
-if not user:
+
+# ==============================
+# ✅ AUTH CHECK (ADMIN ONLY)
+# ==============================
+user_claims = st.session_state.get("user")
+
+if not user_claims:
     st.error("Please login")
     st.stop()
 
-roles = user.get("realm_access", {}).get("roles", [])
-is_admin = "admin" in roles
+auth_ctx = normalize_user(user_claims)
 
-if not is_admin:
+if not can_upload(auth_ctx):
     st.error("🚫 Access denied. Admin only.")
     st.stop()
+
 
 # ==============================
 # ✅ INIT

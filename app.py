@@ -1,58 +1,39 @@
-import streamlit as st
+import os
 import requests
-from jose import jwt
+import streamlit as st
 from dotenv import load_dotenv
 
 from rag.logger import logger
+from auth.auth import verify_token, get_auth_provider
+from auth.auth_context import normalize_user, is_admin, role_from_auth
 
 load_dotenv(override=True)
 
 st.set_page_config(page_title="Enterprise RAG Demo")
 
-
-# ==============================
-# ✅ AUTH CONFIG
-# ==============================
-KEYCLOAK_URL = "http://localhost:8080"
-REALM = "rag_application"
-CLIENT_ID = "backend-api"
-CLIENT_SECRET = "Hdi2qBsE8OsFV4GV8LfxriI7fs7BUM9k"
-
-TOKEN_URL = f"{KEYCLOAK_URL}/realms/{REALM}/protocol/openid-connect/token"
-KEYCLOAK_ISSUER = f"{KEYCLOAK_URL}/realms/{REALM}"
-JWKS_URL = f"{KEYCLOAK_ISSUER}/protocol/openid-connect/certs"
-LOGOUT_URL = f"{KEYCLOAK_ISSUER}/protocol/openid-connect/logout"
+AUTH_PROVIDER = get_auth_provider()
 
 
 # ==============================
-# ✅ TOKEN HELPERS
+# ✅ KEYCLOAK CONFIG (only used when AUTH_PROVIDER=keycloak)
 # ==============================
-@st.cache_resource
-def load_jwks():
-    return requests.get(JWKS_URL, timeout=10).json()
+KEYCLOAK_BASE_URL = os.getenv("KEYCLOAK_BASE_URL", "http://localhost:8080").rstrip("/")
+KEYCLOAK_REALM = os.getenv("KEYCLOAK_REALM", "rag_application")
+KEYCLOAK_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID", "backend-api")
+KEYCLOAK_CLIENT_SECRET = os.getenv("KEYCLOAK_CLIENT_SECRET", "")
+
+TOKEN_URL = f"{KEYCLOAK_BASE_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token"
 
 
-jwks = load_jwks()
-
-
-def verify_token(token):
-    header = jwt.get_unverified_header(token)
-    key = next(k for k in jwks["keys"] if k["kid"] == header["kid"])
-    return jwt.decode(
-        token,
-        key,
-        algorithms=["RS256"],
-        options={"verify_aud": False},
-        issuer=KEYCLOAK_ISSUER,
-    )
-
-
+# ==============================
+# ✅ HELPERS
+# ==============================
 def token_request(payload):
     return requests.post(
         TOKEN_URL,
         data={
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
+            "client_id": KEYCLOAK_CLIENT_ID,
+            "client_secret": KEYCLOAK_CLIENT_SECRET,
             **payload,
         },
         timeout=15,
@@ -74,6 +55,13 @@ def logout():
     st.session_state.clear()
 
 
+def save_authenticated_session(access_token: str, refresh_token: str = None):
+    claims = verify_token(access_token)
+    st.session_state.user = claims
+    st.session_state.access_token = access_token
+    st.session_state.refresh_token = refresh_token
+
+
 # ==============================
 # ✅ SESSION
 # ==============================
@@ -86,29 +74,43 @@ for key in ["user", "access_token", "refresh_token"]:
 # ✅ LOGIN UI
 # ==============================
 st.sidebar.title("🔐 Login")
+st.sidebar.caption(f"Provider: {AUTH_PROVIDER}")
 
-username = st.sidebar.text_input("Username")
-password = st.sidebar.text_input("Password", type="password")
+if AUTH_PROVIDER == "keycloak":
+    username = st.sidebar.text_input("Username")
+    password = st.sidebar.text_input("Password", type="password")
 
-if st.sidebar.button("Login"):
-    res = token_request({
-        "grant_type": "password",
-        "username": username.strip(),
-        "password": password.strip(),
-    })
+    if st.sidebar.button("Login"):
+        res = token_request({
+            "grant_type": "password",
+            "username": username.strip(),
+            "password": password.strip(),
+        })
 
-    if res.status_code == 200:
-        tokens = res.json()
-        user = verify_token(tokens["access_token"])
+        if res.status_code == 200:
+            tokens = res.json()
+            save_authenticated_session(
+                access_token=tokens["access_token"],
+                refresh_token=tokens.get("refresh_token"),
+            )
+            st.sidebar.success("✅ Login successful")
+            st.rerun()
+        else:
+            logger.error("Keycloak login failed: %s", res.text)
+            st.sidebar.error("❌ Login failed")
 
-        st.session_state.user = user
-        st.session_state.access_token = tokens["access_token"]
-        st.session_state.refresh_token = tokens.get("refresh_token")
+else:
+    st.sidebar.info("Paste a valid access/session token for this provider.")
+    raw_token = st.sidebar.text_area("JWT token", height=180)
 
-        st.sidebar.success(f"✅ {user.get('preferred_username')}")
-        st.rerun()
-    else:
-        st.sidebar.error("❌ Login failed")
+    if st.sidebar.button("Use Token"):
+        try:
+            save_authenticated_session(access_token=raw_token.strip())
+            st.sidebar.success("✅ Token accepted")
+            st.rerun()
+        except Exception as e:
+            logger.exception("Token login failed")
+            st.sidebar.error(f"❌ Token verification failed: {str(e)}")
 
 
 # ==============================
@@ -128,27 +130,31 @@ if not st.session_state.user:
     st.warning("Please login")
     st.stop()
 
-user = st.session_state.user
-roles = user.get("realm_access", {}).get("roles", [])
-is_admin = "admin" in roles
+auth_ctx = normalize_user(
+    st.session_state.user,
+    provider=AUTH_PROVIDER
+)
+
+current_role = role_from_auth(auth_ctx)
+admin = is_admin(auth_ctx)
 
 st.title("📚 Enterprise RAG Demo")
-
-st.success(f"Logged in as: {user.get('preferred_username')}")
-st.info(f"Role: {'Admin' if is_admin else 'User'}")
+st.success(f"Logged in as: {auth_ctx.username or auth_ctx.user_id}")
+st.info(f"Role: {'Admin' if admin else 'User'}")
+st.caption(f"Provider: {AUTH_PROVIDER}")
 
 
 # ==============================
 # ✅ INSTRUCTIONS ONLY
 # ==============================
-if is_admin:
+if admin:
     st.markdown(
         """
 ## 👈 Use the sidebar to navigate:
 
 ### Admin capabilities:
 - 📤 **Upload Page**
-  - Upload documents (PDF/Markdown)
+  - Upload documents
   - Mark documents as classified
 
 - 💬 **Chat Page**

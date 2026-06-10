@@ -4,7 +4,7 @@ import pickle
 import uuid
 from dotenv import load_dotenv
 from langchain_community.vectorstores import FAISS
-
+from auth.auth_context import normalize_user, role_from_auth
 from rag.logger import logger
 from rag.retriever_dense import NvidiaEmbeddings
 from rag.chat_store import init_db, save_message, load_messages, get_chat_titles
@@ -14,17 +14,19 @@ from rag.eval_dataset import build_dataset
 from rag.evaluator import run_evaluation
 
 
+
 # ==============================
 # ✅ AUTH CHECK
 # ==============================
-user = st.session_state.get("user")
+user_claims = st.session_state.get("user")
 
-if not user:
+if not user_claims:
     st.error("Please login")
     st.stop()
 
-user_id = user.get("sub")
-
+auth_ctx = normalize_user(user_claims)
+user_id = auth_ctx.user_id
+role = role_from_auth(auth_ctx)
 
 # ==============================
 # ✅ INIT
@@ -32,10 +34,16 @@ user_id = user.get("sub")
 load_dotenv(override=True)
 init_db()
 
-roles = user.get("realm_access", {}).get("roles", [])
-is_admin = "admin" in roles
 
-logger.info("Chat initialized | user=%s role=%s", user_id, roles)
+is_admin = role == "admin"
+
+logger.info(
+    "Chat initialized | user=%s role=%s normalized_roles=%s",
+    user_id,
+    role,
+    sorted(auth_ctx.roles),
+)
+
 
 
 # ==============================
@@ -97,7 +105,7 @@ for session_id, title in sessions:
 # ✅ MAIN UI
 # ==============================
 st.title("💬 Chat with your Document")
-st.markdown(f"**Active role:** {'admin' if is_admin else 'user'}")
+st.markdown(f"**Active role:** {role}")
 
 
 # ==============================
@@ -162,13 +170,13 @@ if query:
         logger.info(
             "Calling orchestrator | user=%s role=%s query=%s",
             user_id,
-            "admin" if is_admin else "user",
+            role,
             query
         )
 
         result = orchestrate(
             query=query,
-            role="admin" if is_admin else "user",
+            role=role,
             user_id=user_id,
             messages=st.session_state.messages
         )
